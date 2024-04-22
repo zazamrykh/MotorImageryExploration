@@ -1,0 +1,45 @@
+Морле-вейвлет:
+Subject A test loss: 0.14036380251248678 test accuracy: 0.8335262345679012
+Subject B test loss: 0.29268305997053784 test accuracy: 0.6307979559748428
+Subject C test loss: 0.13190802559256554 test accuracy: 0.8491639254385965
+Subject E test loss: 0.20657892525196075 test accuracy: 0.7237540849673203
+Subject F test loss: 0.17237817496061325 test accuracy: 0.7958140432098766
+Subject G test loss: 0.1173413669069608 test accuracy: 0.8778044871794872
+Subject H test loss: 0.4065467193722725 test accuracy: 0.37276785714285715
+Subject I test loss: 0.43171003460884094 test accuracy: 0.30502717391304346
+Subject J test loss: 0.06712753139436245 test accuracy: 0.9511387711864407
+Subject K test loss: 0.21762951835989952 test accuracy: 0.7164199561403508
+Subject L test loss: 0.08918191306293011 test accuracy: 0.9108664772727273
+Subject M test loss: 0.1821497231721878 test accuracy: 0.8014823717948718
+Test losses:
+['0.140', '0.293', '0.132', '0.207', '0.172', '0.117', '0.407', '0.432', '0.067', '0.218', '0.089', '0.182']
+Test accuracies:
+['0.834', '0.631', '0.849', '0.724', '0.796', '0.878', '0.373', '0.305', '0.951', '0.716', '0.911', '0.801']
+Mean test loss: 0.20463323293046817
+Mean test accuracy: 0.730713611565693
+Median test accuracy: 0.7986482075023742
+Minimum test accuracy: 0.30502717391304346
+Maximum test accuracy: 0.9511387711864407
+
+Мексиканская шляпа:
+Subject A test loss: 0.12436232219139735 test accuracy: 0.8543595679012346
+Subject B test loss: 0.28688811262448627 test accuracy: 0.6329599056603773
+Subject C test loss: 0.11740212328732014 test accuracy: 0.8501233552631579
+Subject E test loss: 0.19203361620505652 test accuracy: 0.7661356209150326
+Subject F test loss: 0.16032958403229713 test accuracy: 0.8228202160493826
+Subject G test loss: 0.10772503291567166 test accuracy: 0.867588141025641
+Subject H test loss: 0.4083758741617203 test accuracy: 0.3504464285714286
+Subject I test loss: 0.43498098105192184 test accuracy: 0.30570652173913043
+Subject J test loss: 0.09425223246216774 test accuracy: 0.9433262711864407
+Subject K test loss: 0.20103394612669945 test accuracy: 0.7281387061403508
+Subject L test loss: 0.0702646030113101 test accuracy: 0.9355823863636363
+Subject M test loss: 0.16627793262402216 test accuracy: 0.797676282051282
+Test losses:
+['0.124', '0.287', '0.117', '0.192', '0.160', '0.108', '0.408', '0.435', '0.094', '0.201', '0.070', '0.166']
+Test accuracies:
+['0.854', '0.633', '0.850', '0.766', '0.823', '0.868', '0.350', '0.306', '0.943', '0.728', '0.936', '0.798']
+Mean test loss: 0.19699386339117253
+Mean test accuracy: 0.737905283572258
+Median test accuracy: 0.8102482490503323
+Minimum test accuracy: 0.30570652173913043
+Maximum test accuracy: 0.9433262711864407
