@@ -6,6 +6,7 @@ from math import floor, ceil
 from pywt import DiscreteContinuousWavelet, integrate_wavelet, scale2frequency
 from pywt._cwt import next_fast_len
 from pywt._extensions._pywt import _check_dtype, ContinuousWavelet, Wavelet
+
 fftmodule = torch.fft
 
 
@@ -57,7 +58,8 @@ def cwt1d(data, scales, int_psi_scales, axis=-1, out_dtype='real', device='cpu')
                 out[i, ...] = coef.real
             else:
                 out[i, ...] = coef
-    out = out.permute(1, 2, 0, 3)
+    if len(out.shape) == 4:
+        out = out.permute(1, 2, 0, 3)
     return out
 
 

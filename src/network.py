@@ -5,33 +5,41 @@ from torch import nn
 
 from src import params
 from src.functions import MorletTransform, change_channels_order
-from src.params import torch_dtype, device, out_dtype
+from src.params import torch_dtype, device, out_dtype, all_sensors, frequency_num
 from wavelets.dwt1d import cwt1d
 import torch.nn.functional as F
 
 
-class MWTConvNet(nn.Module):
-    def __init__(self, name, scales, int_psi_scales, dropout=0.0):
+class WTConvNet(nn.Module):
+    def __init__(self, name, scales, int_psi_scales, dropout=0.0, channels_number=22, input_timestamps=200):
         super().__init__()
 
+        if channels_number == 22:
+            self.interpolation = True
+        else:
+            self.interpolation = False
+
+        self.channels_number = channels_number
         self.name = name
         self.scales = scales
         self.int_psi_scales = int_psi_scales
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=23, out_channels=64, kernel_size=(7, 7), padding=3),
+            nn.Conv2d(in_channels=self.channels_number, out_channels=64, kernel_size=(7, 7), padding=3),
             nn.BatchNorm2d(64),
             nn.ReLU(),
         )
-        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2) # 80x200 -> 40x100
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)  # 80x200 -> 40x100
 
         self.conv2 = nn.Sequential(
-            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 5), padding=(1,2), stride=(1, 2)), # 40x100 -> 40x50
+            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 5), padding=(1, 2), stride=(1, 2)),
+            # 40x100 -> 40x50
             nn.BatchNorm2d(128),
             nn.ReLU(),
         )
 
         self.conv3 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 5), padding=1, stride=(1, 2)), # 40x50 -> 40x25
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 5), padding=1, stride=(1, 2)),
+            # 40x50 -> 40x25
             nn.BatchNorm2d(128),
             nn.ReLU(),
         )
@@ -48,27 +56,38 @@ class MWTConvNet(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(),
         )
-        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2) # 20x12 -> 10x6
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)  # 20x12 -> 10x6
 
         self.conv6 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(3, 3), padding=1, stride=(2, 2)), # 10x6 -> 5x3
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(3, 3), padding=1, stride=(2, 2)),  # 10x6 -> 5x3
             nn.BatchNorm2d(256),
             nn.ReLU(),
         )
 
         self.dropout = nn.Dropout(dropout)
 
+        # 80x200 -> 5x3
+
+        first_dim = 5
+        second_dim = 3
+        if input_timestamps == 125:
+            second_dim = 2
+        if frequency_num == 60:
+            first_dim = 4
         self.fully_connected = nn.Sequential(
-            nn.Linear(256 * 5 * 3, 6),
+            nn.Linear(256 * first_dim * second_dim, 6),
             nn.Softmax(dim=-1)
         )
 
     def forward(self, x):  # [BatchSize, 22, 200] as input
-        time_domain_signal = change_channels_order(x)
-        time_domain_signal = time_domain_signal.unsqueeze(1)
-        time_domain_signal = F.interpolate(time_domain_signal, size=(80, 200), mode='bilinear', align_corners=False)
         wt_result = cwt1d(x, self.scales, self.int_psi_scales, out_dtype='real', device=device)
-        x = torch.cat([time_domain_signal, wt_result], dim=1)  # [BatchSize, 23, 80, 200] as input to neural network
+        if self.interpolation:
+            time_domain_signal = change_channels_order(x)
+            time_domain_signal = time_domain_signal.unsqueeze(1)
+            time_domain_signal = F.interpolate(time_domain_signal, size=(80, 200), mode='bilinear', align_corners=False)
+            x = torch.cat([time_domain_signal, wt_result], dim=1)  # [BatchSize, 23, 80, 200] as input to neural network
+        else:
+            x = wt_result
 
         x = self.pool1(self.conv1(x))
         x = self.conv3(self.conv2(x))
@@ -76,7 +95,7 @@ class MWTConvNet(nn.Module):
         x = self.pool3(self.conv5(x))
         x = self.conv6(x)
 
-        x = x.view(-1, 256 * 5 * 3)
+        x = x.view(-1, 256 * x.shape[-1] * x.shape[-2])
         x = self.fully_connected(self.dropout(x))
         return x
 
@@ -98,12 +117,13 @@ class MWTConvNetL(nn.Module):
             nn.BatchNorm2d(64),
             nn.ReLU(),
         )
-        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2) # 80x200 -> 40x100
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)  # 80x200 -> 40x100
 
         self.block1 = Block(32, 64)
         # Residual
         self.stride_conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3), padding=1, stride=(1, 2)), # 40x100 -> 40x50
+            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3), padding=1, stride=(1, 2)),
+            # 40x100 -> 40x50
             nn.BatchNorm2d(128),
             nn.ReLU(),
         )
@@ -112,7 +132,8 @@ class MWTConvNetL(nn.Module):
         self.block3 = Block(64, 128)
 
         self.stride_conv2 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(3, 3), padding=1, stride=(2, 2)), # 40x50 -> 20x25
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=(3, 3), padding=1, stride=(2, 2)),
+            # 40x50 -> 20x25
             nn.BatchNorm2d(256),
             nn.ReLU(),
         )
@@ -121,7 +142,8 @@ class MWTConvNetL(nn.Module):
         self.block5 = Block(128, 256)
 
         self.stride_conv3 = nn.Sequential(
-            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, stride=(2, 2)), # 20x25 -> 10x12
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, stride=(2, 2)),
+            # 20x25 -> 10x12
             nn.BatchNorm2d(256),
             nn.ReLU(),
         )
@@ -130,7 +152,7 @@ class MWTConvNetL(nn.Module):
         self.block7 = Block(128, 256)
 
         self.stride_conv4 = nn.Sequential(
-            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, stride=(2, 2)), # 10x12 -> 5x6
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, stride=(2, 2)),  # 10x12 -> 5x6
             nn.BatchNorm2d(256),
             nn.ReLU(),
         )
@@ -184,7 +206,6 @@ class Block(nn.Module):
 
     def forward(self, x):
         return self.conv(self.down_conv(x))
-
 
 
 class WaveletTransform(nn.Module):

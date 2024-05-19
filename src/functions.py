@@ -1,5 +1,6 @@
 import colorsys
 import os
+import pickle
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -11,12 +12,12 @@ from scipy.signal import stft
 from torch.utils.data import TensorDataset, DataLoader
 import torch.nn.functional as F
 
-from wavelets.dwt1d import cwt1d
+from src.wavelets.dwt1d import cwt1d
 
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 
-from src.params import number_of_channels, channels, imagery_actions, event_duration, STFT_length, \
-    STFT_overlap, numpy_dtype, wavelet, wt_frequencies, device, path_to_saved_weights, spatial_channels_order
+from src.params import number_of_channels, channels, imagery_actions, STFT_length, \
+    STFT_overlap, numpy_dtype, wavelet, wt_frequencies, device, path_to_weights, spatial_channels_order
 
 
 def visualize_sample(sample, marker=None, channels_to_show=None, title=None):
@@ -39,6 +40,15 @@ def visualize_sample(sample, marker=None, channels_to_show=None, title=None):
         plt.title(str(imagery_actions[marker]))
 
     plt.show()
+
+
+def seed_everything(seed):
+    np.random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
 
 
 def MorletTransform(signal, freq=wt_frequencies, wavelet=wavelet, sampling_rate=200, number_of_parts=1,
@@ -120,13 +130,23 @@ def create_array_of_sections(indices, event_dur, eeg_data):
     return np.array(array_of_motions)
 
 
-def cut_all_imaginary_motion(path):
-    mat = scipy.io.loadmat(path)
-    markers = mat['o'][0][0][4]
-    markers = np.reshape(markers, (-1))
+def cut_all_imaginary_motion(path, from_mat=True, event_timestamps=200):
+    if from_mat:
+        mat = scipy.io.loadmat(path)
+        markers = mat['o'][0][0][4]
+        markers = np.reshape(markers, (-1))
+        eeg_data = mat['o'][0][0][5]
+    else:
+        data_dict = None
+        if path.endswith('.pkl'):
+            with open(path, 'rb') as pickle_file:
+                data_dict = pickle.load(pickle_file)
+        markers = data_dict['marker']
+        eeg_data = [data_dict[sensor] for sensor in channels]
+        eeg_data = np.array(eeg_data)
+        eeg_data = eeg_data.T
 
     differences = np.diff(markers)
-
     indices_lh = np.where(differences == 1)[0] + 1
     indices_rh = np.where(differences == 2)[0] + 1
     indices_passive = np.where(differences == 3)[0] + 1
@@ -134,14 +154,12 @@ def cut_all_imaginary_motion(path):
     indices_t = np.where(differences == 5)[0] + 1
     indices_rl = np.where(differences == 6)[0] + 1
 
-    eeg_data = mat['o'][0][0][5]
-
-    lh_im = create_array_of_sections(indices_lh, event_duration, eeg_data)
-    rh_im = create_array_of_sections(indices_rh, event_duration, eeg_data)
-    passive_im = create_array_of_sections(indices_passive, event_duration, eeg_data)
-    ll_im = create_array_of_sections(indices_ll, event_duration, eeg_data)
-    t_im = create_array_of_sections(indices_t, event_duration, eeg_data)
-    rl_im = create_array_of_sections(indices_rl, event_duration, eeg_data)
+    lh_im = create_array_of_sections(indices_lh, event_timestamps, eeg_data)
+    rh_im = create_array_of_sections(indices_rh, event_timestamps, eeg_data)
+    passive_im = create_array_of_sections(indices_passive, event_timestamps, eeg_data)
+    ll_im = create_array_of_sections(indices_ll, event_timestamps, eeg_data)
+    t_im = create_array_of_sections(indices_t, event_timestamps, eeg_data)
+    rl_im = create_array_of_sections(indices_rl, event_timestamps, eeg_data)
 
     arrays_list = [lh_im, rh_im, passive_im, ll_im, t_im, rl_im]
     markers = np.concatenate([np.full(len(arr), i + 1) for i, arr in enumerate(arrays_list)])
@@ -232,6 +250,17 @@ def create_dataloader(numpy_samples, numpy_target, batch_size=64):
     return dataloader
 
 
+def create_dataset(numpy_samples, numpy_target):
+    # Do one hot encoding
+    if len(numpy_target.shape) == 1:
+        torch_target = one_hot_encode(numpy_target).float()
+    else:
+        torch_target = torch.from_numpy(numpy_target).float()
+    torch_samples = torch.from_numpy(numpy_samples).float()
+    dataset = TensorDataset(torch_samples, torch_target)
+    return dataset
+
+
 def get_num_of_model_param(model):
     num_param = 0
     for parameter in model.parameters():
@@ -249,31 +278,40 @@ def visualize_history(history, model_name):
     plt.legend()
     plt.grid(True)
 
-    plt.savefig(path_to_saved_weights + model_name + '.png')
+    plt.savefig(path_to_weights + model_name + '.png')
     plt.show()
 
 
 def evaluate_net(model, loader, loss_fn):
     model.eval()
-    avg_val_loss = 0
-    accuracy = 0
+    sum_loss = 0
+    correct_predictions = 0
+    total_examples = 0
     for inputs, labels in loader:
         inputs = inputs.to(device)
         labels = labels.to(device)
         outputs = model.forward(inputs)
         loss = loss_fn(outputs, labels)
-        avg_val_loss += loss.item()
+        sum_loss += loss.item()
 
         predicted_classes = torch.argmax(outputs, dim=1)
         real_classes = torch.argmax(labels, dim=1)
-        correct_predictions = torch.sum(real_classes == predicted_classes).item()
-        total_examples = labels.shape[0]
-        accuracy += correct_predictions / total_examples
-    avg_val_loss /= len(loader)
-    accuracy /= len(loader)
-    return avg_val_loss, accuracy
+        correct_predictions += torch.sum(real_classes == predicted_classes).item()
+        total_examples += labels.shape[0]
+    sum_loss = sum_loss / total_examples
+    accuracy = correct_predictions / total_examples
+    return sum_loss, accuracy
 
 
 def change_channels_order(signal, new_order=spatial_channels_order):
     indices = [channels.index(channel) for channel in new_order]
     return signal[:, indices, :]
+
+
+def seed_everything(seed):
+    np.random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
