@@ -3,20 +3,22 @@ import gc
 import os.path
 
 import numpy as np
+import optuna
 import pywt
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from sklearn.model_selection import KFold
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader, SubsetRandomSampler
 
-from src.functions import create_dataloader, get_num_of_model_param, visualize_history, generate_mt_freq, evaluate_net, \
-    create_dataset, seed_everything
-from src.network import WTConvNet, WaveletTransform
+from src.functions import create_dataloader, get_num_of_model_param, visualize_history, evaluate_net, \
+    create_dataset, seed_everything, generate_mt_freq
+from src.network import WTConvNet, WaveletTransform, WTCNN3D
 from src.params import path_to_serialized, device, path_to_weights, wavelet, sampling_rate, out_dtype, \
-    random_seed, batch_size, epochs, dropout_rate, weight_decay, learning_rate, Sensors, frequency_num
+    random_seed, batch_size, epochs, dropout_rate, weight_decay, learning_rate, frequencies_num, step_size, \
+    gamma, channels
 from wavelets.dwt1d import generate_int_psi_scales
-from sklearn.model_selection import KFold
 
 
 def evaluate(model, dataloader, loss_fn):
@@ -45,6 +47,7 @@ def train(model, data_tr, data_val, loss_fn, epochs, optimizer, scheduler=None, 
     if output: print('Start training')
     history = {'train': [], 'val': [], 'accuracy': [], 'train_accuracy': []}
     best_accuracy = 0
+    best_loss = 1_000_000_000 #  just big value
     best_model_wts = copy.deepcopy(model.state_dict())
     for epoch in range(epochs):
         # For transfer learning
@@ -81,21 +84,20 @@ def train(model, data_tr, data_val, loss_fn, epochs, optimizer, scheduler=None, 
 
         if data_val is not None:
             val_loss, val_accuracy = evaluate(model, data_val, loss_fn)
-            history['val'].append(val_accuracy)
-            history['accuracy'].append(val_loss)
+            history['val'].append(val_loss)
+            history['accuracy'].append(val_accuracy)
             if output:
                 print('%d / %d - val loss: %f, train loss: %f, accuracy: %f' % (epoch + 1, epochs,
                                                                                 val_loss, train_loss, val_accuracy))
-            if epoch == 0 or val_accuracy > best_accuracy:
+            if epoch == 0 or val_accuracy > best_accuracy or (val_accuracy == best_accuracy and val_loss < best_loss):
                 best_accuracy = val_accuracy
+                best_loss = val_loss
                 model.best_accuracy = best_accuracy
                 best_model_wts = copy.deepcopy(model.state_dict())
-                torch.save(model.state_dict(), path_to_weights + model.name + '.pth')
         else:
             if output:
                 print('%d / %d - train loss: %f, train accuracy: %f' % (epoch + 1, epochs,
                                                                         train_loss, train_accuracy))
-            torch.save(model.state_dict(), path_to_weights + model.name + '.pth')
 
         if scheduler is not None:
             scheduler.step()
@@ -149,7 +151,7 @@ def cross_validation(data, labels):
     gamma = 0.2
     val_split = 0.12
 
-    frequencies = generate_mt_freq(points_num, bottom=bottom, top=top, power=power)
+    frequencies = generate_mt_freq(frequencies_num)
     scales = pywt.frequency2scale(wavelet, frequencies / sampling_rate)
     int_psi_scales = generate_int_psi_scales(scales, wavelet, device)
 
@@ -225,18 +227,16 @@ def cross_validation(data, labels):
 
 def train_WTCNN():
     join_train_test = False
-    channels = [Sensors.O1, Sensors.P3, Sensors.C3, Sensors.F3, Sensors.F4, Sensors.C4, Sensors.P4,
-                Sensors.O2]  # all_channels
     head_sampling_rate = 125
-    do_decreasing_sr = True
-    do_decreasing_ch = True
+    do_decreasing_sr = False
+    do_decreasing_ch = False
 
-    # data_train = np.load(path_to_serialized + 'my-dataset/data_five_hundred_train.npy')
-    # data_test = np.load(path_to_serialized + 'my-dataset/data_five_hundred_test.npy')
-    # data_val = np.load(path_to_serialized + 'my-dataset/data_five_hundred_val.npy')
-    # markers_train = np.load(path_to_serialized + 'my-dataset/markers_five_hundred_train.npy')
-    # markers_test = np.load(path_to_serialized + 'my-dataset/markers_five_hundred_test.npy')
-    # markers_val = np.load(path_to_serialized + 'my-dataset/markers_five_hundred_val.npy')
+    # data_train = np.load(path_to_serialized + 'my-dataset/data_train.npy')
+    # data_test = np.load(path_to_serialized + 'my-dataset/data_test.npy')
+    # data_val = np.load(path_to_serialized + 'my-dataset/data_val.npy')
+    # markers_train = np.load(path_to_serialized + 'my-dataset/markers_train.npy')
+    # markers_test = np.load(path_to_serialized + 'my-dataset/markers_test.npy')
+    # markers_val = np.load(path_to_serialized + 'my-dataset/markers_val.npy')
 
     data_train = np.load(path_to_serialized + 'data_train.npy')
     data_test = np.load(path_to_serialized + 'data_test.npy')
@@ -268,16 +268,16 @@ def train_WTCNN():
     val_loader = create_dataloader(data_val, markers_val, batch_size)
     test_loader = create_dataloader(data_test, markers_test, batch_size)
 
-    frequencies = generate_mt_freq(frequency_num, bottom=1, top=frequency_num, power=2)
+    frequencies = generate_mt_freq(frequencies_num)
     scales = pywt.frequency2scale(wavelet, frequencies / sampling_rate)
     int_psi_scales = generate_int_psi_scales(scales, wavelet, device)
 
-    model_name = 'WTCNN_pretrained_125ts_60freq' + '_' + wavelet + '_bs' + str(batch_size) + '_ep' + str(
+    model_name = 'WTCNN' + '_' + wavelet + '_bs' + str(batch_size) + '_ep' + str(
         epochs) + '_lr' + str(
         learning_rate) + '_wd' + str(weight_decay) + '_dr' + str(dropout_rate)
-    model = WTConvNet(model_name, scales, int_psi_scales, input_timestamps=head_sampling_rate, dropout=dropout_rate,
+    model = WTConvNet(model_name, scales, int_psi_scales, input_timestamps=sampling_rate, dropout=dropout_rate,
                       channels_number=len(channels)).to(device)
-    # model.load_state_dict(torch.load(path_to_weights + "0.572_WTCNN_pretrained_125ts_mexh_bs64_ep18_lr0.0001_wd0.01_dr0.1.pth"))
+    # model.load_state_dict(torch.load(path_to_weights + "0.546_WTCNN_pretrained_125ts_60freq_mexh_bs64_ep10_lr0.0001_wd0.01_dr0.1.pth"))
 
     # optimizer = torch.optim.SGD(model.parameters(), lr=learinig_rate, momentum=0.9, nesterov=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -291,8 +291,43 @@ def train_WTCNN():
     print('Result test loss:', test_loss, '\nResult test accuracy:', test_accuracy)
 
     model_name = str(round(test_accuracy, 3)) + '_' + model.name
+    torch.save(model.state_dict(), path_to_weights + model_name)
+    visualize_history(history, model_name, normalized=True)
+
+
+def train_WTCNN3D():
+    data_train = np.load(path_to_serialized + 'data_train.npy')
+    data_test = np.load(path_to_serialized + 'data_test.npy')
+    data_val = np.load(path_to_serialized + 'data_valid.npy')
+    markers_train = np.load(path_to_serialized + 'markers_train.npy')
+    markers_test = np.load(path_to_serialized + 'markers_test.npy')
+    markers_val = np.load(path_to_serialized + 'markers_valid.npy')
+    train_loader = create_dataloader(data_train, markers_train, batch_size)
+    val_loader = create_dataloader(data_val, markers_val, batch_size)
+    test_loader = create_dataloader(data_test, markers_test, batch_size)
+
+    frequencies = generate_mt_freq(frequencies_num)
+    scales = pywt.frequency2scale(wavelet, frequencies / sampling_rate)
+    int_psi_scales = generate_int_psi_scales(scales, wavelet, device)
+
+    model_name = 'WTCNN3D' + '_' + wavelet + '_bs' + str(batch_size) + '_ep' + str(
+        epochs) + '_lr' + str(
+        learning_rate) + '_wd' + str(weight_decay) + '_dr' + str(dropout_rate)
+    model = WTCNN3D(scales, int_psi_scales, name=model_name, dropout=dropout_rate).to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+    loss = nn.BCELoss(reduction='sum')
+    number_of_param = get_num_of_model_param(model)
+    print('Number of model params:', number_of_param)
+
+    history = train(model, train_loader, val_loader, loss, epochs, optimizer, scheduler, early_stop=True)
+    test_loss, test_accuracy = evaluate_net(model, test_loader, loss)
+    print('Result test loss:', test_loss, '\nResult test accuracy:', test_accuracy)
+
+    model_name = str(round(test_accuracy, 3)) + '_' + model.name
     torch.save(model.state_dict(), path_to_weights + model_name + '.pth')
-    visualize_history(history, model_name)
+    visualize_history(history, model_name, normalized=True)
 
 
 def train_resnet():
@@ -305,7 +340,6 @@ def train_resnet():
 
     batch_size = 64
     epochs = 25
-    class_num = 6
     learinig_rate = 4e-4
     weight_decay = 0.1
     dropout = 0.0
@@ -313,8 +347,7 @@ def train_resnet():
     val_loader = create_dataloader(data_val, markers_val, batch_size)
     test_loader = create_dataloader(data_test, markers_test, batch_size)
 
-    points_num = 80
-    frequencies = generate_mt_freq(points_num, bottom=1, top=80, power=2)
+    frequencies = generate_mt_freq(frequencies_num)
     scales = pywt.frequency2scale(wavelet, frequencies / sampling_rate)
     int_psi_scales = generate_int_psi_scales(scales, wavelet, device)
 
@@ -343,6 +376,7 @@ def train_resnet():
     visualize_history(history, model_name)
 
 
+
 if __name__ == '__main__':
     neural_network = 'WTCNN'
     do_cross_validation = False
@@ -352,5 +386,7 @@ if __name__ == '__main__':
             cross_validation(None, None)
         else:
             train_WTCNN()
-    if neural_network == 'resnet18':
+    elif neural_network == 'resnet18':
         train_resnet()
+    elif neural_network == 'WT3DCNN':
+        train_WTCNN3D()

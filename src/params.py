@@ -3,15 +3,13 @@ from enum import Enum
 import numpy as np
 import torch
 
-from src.functions import generate_mt_freq
-
 sampling_rate = 200  # 200
 hat_sampling_rate = 125
 event_duration = 1.0
 event_timestamps = sampling_rate * int(event_duration)
-# channels = ['Fp1', 'Fp2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'A1', 'A2', 'F7', 'F8',
-#             'T3', 'T4', 'T5', 'T6', 'Fz', 'Cz', 'Pz', 'X5']
-channels = ['O1', 'P3', 'C3', 'F3', 'F4', 'C4', 'P4', 'O2']
+channels = ['Fp1', 'Fp2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'A1', 'A2', 'F7', 'F8',
+            'T3', 'T4', 'T5', 'T6', 'Fz', 'Cz', 'Pz', 'X5']
+# channels = ['O1', 'P3', 'C3', 'F3', 'F4', 'C4', 'P4', 'O2']
 
 spatial_channels_order = ['Fp1', 'Fp2', 'F8', 'F4', 'Fz', 'F3', 'F7', 'A1', 'T3', 'C3', 'Cz', 'C4', 'T4', 'A2',
                           'T6', 'P4', 'Pz', 'P3', 'T5', 'O1', 'O2', 'X5']
@@ -29,17 +27,16 @@ device = torch.device('cuda')
 random_seed = 1337
 
 wavelet = 'mexh'  # 'morl' #'cmor2.0-0.8' # 'fpsp2-3.0-1.0'
-frequency_num = 60
-batch_size = 64
+frequencies_num = 100#  60
+batch_size = 128
 epochs = 10
 learning_rate = 0.0001
 weight_decay = 0.01
 dropout_rate = 0.1
 out_dtype = 'real'
 bottom = 1
-top = frequency_num
+top = frequencies_num
 power = 2
-frequencies = generate_mt_freq(frequency_num, bottom=bottom, top=top, power=power)
 step_size = 5
 gamma = 0.2
 

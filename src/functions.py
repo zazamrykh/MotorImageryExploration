@@ -2,7 +2,6 @@ import colorsys
 import os
 import pickle
 
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pywt
@@ -10,14 +9,13 @@ import scipy
 import torch
 from scipy.signal import stft
 from torch.utils.data import TensorDataset, DataLoader
-import torch.nn.functional as F
-
-from src.wavelets.dwt1d import cwt1d
-
-# matplotlib.use('TkAgg')
 
 from src.params import number_of_channels, channels, imagery_actions, STFT_length, \
-    STFT_overlap, numpy_dtype, wavelet, wt_frequencies, device, path_to_weights, spatial_channels_order
+    STFT_overlap, numpy_dtype, wavelet, device, path_to_weights, spatial_channels_order, top, bottom, power, \
+    frequencies_num
+
+
+# matplotlib.use('TkAgg')
 
 
 def visualize_sample(sample, marker=None, channels_to_show=None, title=None):
@@ -49,27 +47,6 @@ def seed_everything(seed):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
-
-
-def MorletTransform(signal, freq=wt_frequencies, wavelet=wavelet, sampling_rate=200, number_of_parts=1,
-                    method='fft'):
-    scales = pywt.frequency2scale(wavelet, freq / sampling_rate)
-    if type(signal) == torch.Tensor:
-        signal = signal.numpy()
-    if len(signal.shape) == 4:
-        chunks = []
-        for i in range(0, signal.shape[0], signal.shape[0] / number_of_parts):
-            chunks.append(signal[i:i + signal, :, :])
-        cwt_result = [pywt.cwt(chunk, scales, wavelet, method=method)[0] for chunk in chunks]
-        cwt_result = np.concatenate(cwt_result)
-    else:
-        cwt_result, frequencies = pywt.cwt(signal, scales, wavelet, method=method)
-        cwt_result = cwt_result.astype(numpy_dtype)
-    if len(cwt_result.shape) == 4:
-        cwt_result = cwt_result.transpose(1, 2, 0, 3)
-    if len(cwt_result.shape) == 3:
-        cwt_result = cwt_result.transpose(1, 0, 2)
-    return cwt_result
 
 
 def visualize_mt(mt_result, frequencies, title=None):
@@ -215,7 +192,7 @@ def normalize_data(data):
     return (data - means) / stds
 
 
-def generate_mt_freq(points_num, bottom=0.1, top=40, power=1):
+def generate_mt_freq(points_num, bottom=bottom, top=top, power=power):
     output = []
     n = power
     c = bottom
@@ -223,6 +200,27 @@ def generate_mt_freq(points_num, bottom=0.1, top=40, power=1):
     for x in np.linspace(0, top - bottom + 1, points_num):
         output.append(a * x ** n + c)
     return np.array(output)
+
+
+def MorletTransform(signal, freq=generate_mt_freq(frequencies_num), wavelet=wavelet, sampling_rate=200, number_of_parts=1,
+                    method='fft'):
+    scales = pywt.frequency2scale(wavelet, freq / sampling_rate)
+    if type(signal) == torch.Tensor:
+        signal = signal.numpy()
+    if len(signal.shape) == 4:
+        chunks = []
+        for i in range(0, signal.shape[0], signal.shape[0] / number_of_parts):
+            chunks.append(signal[i:i + signal, :, :])
+        cwt_result = [pywt.cwt(chunk, scales, wavelet, method=method)[0] for chunk in chunks]
+        cwt_result = np.concatenate(cwt_result)
+    else:
+        cwt_result, frequencies = pywt.cwt(signal, scales, wavelet, method=method)
+        cwt_result = cwt_result.astype(numpy_dtype)
+    if len(cwt_result.shape) == 4:
+        cwt_result = cwt_result.transpose(1, 2, 0, 3)
+    if len(cwt_result.shape) == 3:
+        cwt_result = cwt_result.transpose(1, 0, 2)
+    return cwt_result
 
 
 def one_hot_encode(arr):
@@ -268,7 +266,21 @@ def get_num_of_model_param(model):
     return num_param
 
 
-def visualize_history(history, model_name):
+def normalize(array, method='max-min'):
+    if method == 'max-min':
+        min_val = np.min(array)
+        max_val = np.max(array)
+        return (array - min_val) / (max_val - min_val)
+    elif method == 'standart':
+        mean = np.mean(array)
+        std = np.std(array)
+        return (array - mean) / std
+
+
+def visualize_history(history, model_name, normalized=False):
+    if normalized:
+        history['train'] = normalize(history['train'])
+        history['val'] = normalize(history['val'])
     plt.plot(history['train'], label='Train Loss')
     plt.plot(history['val'], label='Validation Loss')
 
@@ -307,11 +319,3 @@ def change_channels_order(signal, new_order=spatial_channels_order):
     indices = [channels.index(channel) for channel in new_order]
     return signal[:, indices, :]
 
-
-def seed_everything(seed):
-    np.random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = True

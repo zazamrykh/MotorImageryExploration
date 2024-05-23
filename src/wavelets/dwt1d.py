@@ -64,8 +64,22 @@ def cwt1d(data, scales, int_psi_scales, axis=-1, out_dtype='real', device='cpu')
 
 
 def generate_int_psi_scales(scales, wavelet, device):
+    # wavelet = DiscreteContinuousWavelet(wavelet)
+    # precision = 12
+    # int_psi, x = integrate_wavelet(wavelet, precision=precision)
+    # int_psi_scales = []
+    # for i, scale in enumerate(scales):
+    #     step = x[1] - x[0]
+    #     j = np.arange(scale * (x[-1] - x[0]) + 1) / (scale * step)
+    #     j = j.astype(int)  # floor
+    #     if j[-1] >= int_psi.size:
+    #         j = np.extract(j < int_psi.size, j)
+    #     int_psi_scale = int_psi[j][::-1]
+    #     int_psi_scales.append(torch.tensor(int_psi_scale.copy()).to(device))
+    # return int_psi_scales
+
     wavelet = DiscreteContinuousWavelet(wavelet)
-    precision = 10
+    precision = 12
     int_psi, x = integrate_wavelet(wavelet, precision=precision)
     int_psi_scales = []
     for i, scale in enumerate(scales):

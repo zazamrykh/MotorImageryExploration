@@ -60,9 +60,9 @@ def prepare(path_to_files):
     data = np.concatenate(data_list, axis=0)
     markers = np.concatenate(markers_list, axis=0)
     data = np.transpose(data, (0, 2, 1))
-    train_size = 0.68
-    test_size = 0.16
-    val_size = 0.16
+    train_size = 0.7
+    test_size = 0.15
+    val_size = 0.15
 
     data_train, data_temp, markers_train, markers_temp = train_test_split(
         data, markers, train_size=train_size, stratify=markers, random_state=random_seed)
@@ -78,13 +78,13 @@ def prepare(path_to_files):
     data_test = (data_test - means) / stds
     data_valid = (data_valid - means) / stds
 
-    np.save(path_to_serialized + 'my-dataset/data_five_hundred_train.npy', data_train)
-    np.save(path_to_serialized + 'my-dataset/data_five_hundred_test.npy', data_test)
-    np.save(path_to_serialized + 'my-dataset/data_five_hundred_val.npy', data_valid)
+    np.save(path_to_serialized + 'my-dataset/data_train.npy', data_train)
+    np.save(path_to_serialized + 'my-dataset/data_test.npy', data_test)
+    np.save(path_to_serialized + 'my-dataset/data_val.npy', data_valid)
 
-    np.save(path_to_serialized + 'my-dataset/markers_five_hundred_train.npy', markers_train)
-    np.save(path_to_serialized + 'my-dataset/markers_five_hundred_test.npy', markers_test)
-    np.save(path_to_serialized + 'my-dataset/markers_five_hundred_val.npy', markers_valid)
+    np.save(path_to_serialized + 'my-dataset/markers_train.npy', markers_train)
+    np.save(path_to_serialized + 'my-dataset/markers_test.npy', markers_test)
+    np.save(path_to_serialized + 'my-dataset/markers_val.npy', markers_valid)
     visualize_sample(data_train[17][3])
 
 

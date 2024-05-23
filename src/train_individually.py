@@ -12,7 +12,7 @@ from torch.optim import lr_scheduler
 from src.functions import cut_all_imaginary_motion, create_dataloader, generate_mt_freq, evaluate_net
 from src.network import WTConvNet
 from src.params import sampling_rate, device, path_to_weights, wavelet, path_to_dataset, learning_rate, batch_size, \
-    epochs, dropout_rate, weight_decay, frequency_num, bottom, top, power, step_size, gamma
+    epochs, dropout_rate, weight_decay, frequencies_num, bottom, top, power, step_size, gamma
 from src.train import train, cross_validation
 from wavelets.dwt1d import generate_int_psi_scales
 
@@ -69,7 +69,7 @@ if __name__ == '__main__':
             val_loader = create_dataloader(data_valid, markers_valid, batch_size)
             test_loader = create_dataloader(data_test, markers_test, batch_size)
 
-            frequencies = generate_mt_freq(frequency_num, bottom=bottom, top=top, power=power)
+            frequencies = generate_mt_freq(frequencies_num, bottom=bottom, top=top, power=power)
             scales = pywt.frequency2scale(wavelet, frequencies / sampling_rate)
             int_psi_scales = generate_int_psi_scales(scales, wavelet, device)
 
@@ -103,7 +103,7 @@ if __name__ == '__main__':
         f.write('learning_rate = {}\n'.format(learning_rate))
         f.write('weight_decay = {}\n'.format(weight_decay))
         f.write('dropout = {}\n'.format(dropout_rate))
-        f.write('points_num = {}\n'.format(frequency_num))
+        f.write('points_num = {}\n'.format(frequencies_num))
         f.write('bottom = {}\n'.format(bottom))
         f.write('top = {}\n'.format(top))
         f.write('power = {}\n'.format(power))

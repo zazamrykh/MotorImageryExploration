@@ -8,25 +8,29 @@ import matplotlib.pyplot as plt
 
 from src.functions import generate_mt_freq, create_dataloader
 from src.network import WTConvNet
-from src.params import wavelet, sampling_rate, device, path_to_serialized, imagery_actions
+from src.params import wavelet, sampling_rate, device, path_to_serialized, imagery_actions, frequencies_num, Sensors, \
+    dropout_rate
 from src.wavelets.dwt1d import generate_int_psi_scales
 from PIL import ImageTk
 
 if __name__ == '__main__':
-    w8s_path = '../saved-weights/0.713_MWTCNN_mexh_bs_64_ep_25_lr_0.0001_wd_0.1_dr_0.3.pth.pth'
-    points_num = 80
-    frequencies = generate_mt_freq(points_num, bottom=1, top=80, power=2)
+    w8s_path = '../saved-weights/0.188_WTCNN_for_me_mexh_bs64_ep10_lr0.0001_wd0.01_dr0.1.pth'
+    frequencies = generate_mt_freq(frequencies_num)
     scales = pywt.frequency2scale(wavelet, frequencies / sampling_rate)
     int_psi_scales = generate_int_psi_scales(scales, wavelet, device)
 
+    channels = [Sensors.O1, Sensors.P3, Sensors.C3, Sensors.F3, Sensors.F4, Sensors.C4, Sensors.P4,
+                Sensors.O2]  # all_channels
+    head_sampling_rate = 125
     model_name = 'WTCNN_test'
-    model = WTConvNet(model_name, scales, int_psi_scales).to(device)
+    model = WTConvNet(model_name, scales, int_psi_scales, input_timestamps=head_sampling_rate,
+                      channels_number=len(channels)).to(device)
 
     model.load_state_dict(torch.load(w8s_path))
 
     batch_size = 64
-    data_test = np.load(path_to_serialized + 'data_test.npy')
-    markers_test = np.load(path_to_serialized + 'markers_test.npy')
+    data_test = np.load(path_to_serialized + 'my-dataset/data_five_hundred_val.npy')
+    markers_test = np.load(path_to_serialized + 'my-dataset/markers_five_hundred_val.npy')
     test_loader = create_dataloader(data_test, markers_test, batch_size)
     loss_fn = nn.BCELoss(reduction='sum')
 
@@ -52,6 +56,8 @@ if __name__ == '__main__':
             real_list.append(real_classes)
         accuracy = correct_predictions / total_examples
         loss = sum_loss / total_examples
+
+    print('Accuracy:', accuracy)
 
     predicted_list = torch.cat(predicted_list).tolist()
     real_list = torch.cat(real_list).tolist()

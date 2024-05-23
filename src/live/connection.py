@@ -1,21 +1,18 @@
 import os
-from enum import Enum
-import random
-
-import matplotlib
-import matplotlib.pyplot as plt
 import pickle
+import random
+from datetime import datetime
+from enum import Enum
 
+import cv2
+import matplotlib.pyplot as plt
 import pywt
 import torch
 from pylsl import StreamInlet, resolve_stream
-from datetime import datetime, timedelta
 
-import cv2
-
-from src.functions import generate_mt_freq, visualize_mt, visualize_sample
-from src.params import event_duration, Sensors, wavelet, device
-from src.wavelets.dwt1d import cwt1d, generate_int_psi_scales
+from src.functions import generate_mt_freq, visualize_mt
+from src.params import event_duration, wavelet, device, frequencies_num
+from src.wavelets.dwt1d import generate_int_psi_scales, cwt1d
 
 
 class States(Enum):
@@ -47,6 +44,7 @@ class Record:
         self.prev_index = -1
         self.sampling_rate = sampling_rate
         self.preparation_time = preparation_time
+        self.beginning_time = None
 
     def add_data(self, sample, marker):
         self.data['marker'].append(marker)
@@ -75,6 +73,7 @@ class Record:
         while os.path.exists(filename + '.pkl'):
             filename += '_'
         with open(filename + '.pkl', 'wb') as pickle_file:
+            self.data['beginning_date'] = self.beginning_time
             pickle.dump(self.data, pickle_file)
 
 
@@ -137,12 +136,9 @@ class State:
 
 def main():
     # first resolve an EEG stream on the lab network
-    points_num = 80
-    frequencies = generate_mt_freq(points_num, bottom=1, top=80, power=2)
+    frequencies = generate_mt_freq(frequencies_num)
     scales = pywt.frequency2scale(wavelet, frequencies / 125)
     int_psi_scales = generate_int_psi_scales(scales, wavelet, device)
-
-    # matplotlib.use('Agg')
 
     print("looking for an EEG stream...")
     streams = resolve_stream("type", "EEG")
@@ -181,6 +177,7 @@ def main():
             first_pass_was = True
             beginning_timestamp = timestamp
             beginning_time = datetime.now().strftime('%Y.%m.%d %H:%M:%S')
+            record.beginning_time = beginning_time
             print("Experiment beginning time:", beginning_time)
 
         t = timestamp - beginning_timestamp  # Time in seconds
@@ -190,37 +187,33 @@ def main():
                 chill_time = 1.5 + random.random()  # [1.5  2.5]
                 state.set_chill(t, chill_time, window_name, main_img)
                 record.add_data(sample, 0)
-                # uniform_record.add_data_uniformly(sample, 0, t)
             print_time_left(t, preparing_time, time_flags)
+            record.add_data(sample, 0)
 
         elif state.state == States.CHILLING:
             if t - state.state_start_time > state.state_time:
                 imagery_action_number = random.randint(1, 6)
                 motor_imagery_index += 1
                 if motor_imagery_index == total_imagery_number:
-                    record.save('./records/hundred_5')
+                    record.save('./records/hundred_14')
                     return
                 print('Imagination number:', motor_imagery_index)
                 state.set_im_action(imagery_action_number, t, window_name, imgs[States(imagery_action_number)])
                 record.add_data(sample, imagery_action_number)
-                # uniform_record.add_data_uniformly(sample, imagery_action_number, t)
-
-            record.add_data(sample, 0)
-            # uniform_record.add_data_uniformly(sample, 0, t)
+            else:
+                record.add_data(sample, 0)
 
         else:
             record.add_data(sample, 0)
-            # uniform_record.add_data_uniformly(sample, 0, t)
             if t - state.state_start_time > state.state_time:
                 chill_time = 1.5 + random.random()
                 state.set_chill(t, chill_time, window_name, main_img)
-                if i % 20 == 0:
+                if motor_imagery_index % 10 == 0:
                     record.visualize(sampling_rate, 'C3')
                 # wt_result = cwt1d(torch.tensor(record.data['C3'][-sampling_rate:-1]).to(device), scales, int_psi_scales, out_dtype='real', device=device)
                 # visualize_mt(wt_result.to('cpu'), frequencies)
 
         i += 1
-
 
 if __name__ == "__main__":
     main()

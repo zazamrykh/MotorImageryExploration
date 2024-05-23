@@ -1,30 +1,33 @@
 import numpy as np
+import pywt
 import torch
 from matplotlib import pyplot as plt
 from torch import nn
 
 from src import params
 from src.functions import MorletTransform, change_channels_order
-from src.params import torch_dtype, device, out_dtype, all_sensors, frequency_num
+from src.params import torch_dtype, device, out_dtype, all_sensors, frequencies_num, number_of_channels, sampling_rate, \
+    wavelet
 from wavelets.dwt1d import cwt1d
 import torch.nn.functional as F
 
 
 class WTConvNet(nn.Module):
-    def __init__(self, name, scales, int_psi_scales, dropout=0.0, channels_number=22, input_timestamps=200):
+    def __init__(self, name, scales, int_psi_scales, dropout=0.0, channels_number=22, input_timestamps=200,
+                 frequencies_num=frequencies_num):
         super().__init__()
 
         if channels_number == 22:
             self.interpolation = True
         else:
             self.interpolation = False
-
+        self.frequencies_num = frequencies_num
         self.channels_number = channels_number
         self.name = name
         self.scales = scales
         self.int_psi_scales = int_psi_scales
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=self.channels_number, out_channels=64, kernel_size=(7, 7), padding=3),
+            nn.Conv2d(in_channels=self.channels_number + 1, out_channels=64, kernel_size=(7, 7), padding=3),
             nn.BatchNorm2d(64),
             nn.ReLU(),
         )
@@ -72,19 +75,24 @@ class WTConvNet(nn.Module):
         second_dim = 3
         if input_timestamps == 125:
             second_dim = 2
-        if frequency_num == 60:
+        if frequencies_num == 60:
             first_dim = 4
+        if frequencies_num == 100:
+            first_dim = 6
         self.fully_connected = nn.Sequential(
             nn.Linear(256 * first_dim * second_dim, 6),
             nn.Softmax(dim=-1)
         )
 
     def forward(self, x):  # [BatchSize, 22, 200] as input
-        wt_result = cwt1d(x, self.scales, self.int_psi_scales, out_dtype='real', device=device)
+        wt_result, _ = pywt.cwt(x.to('cpu').numpy(), self.scales, wavelet)
+        wt_result = np.transpose(wt_result, (1, 2, 0, 3))
+        wt_result = torch.from_numpy(wt_result).float().to(device)
+
         if self.interpolation:
             time_domain_signal = change_channels_order(x)
             time_domain_signal = time_domain_signal.unsqueeze(1)
-            time_domain_signal = F.interpolate(time_domain_signal, size=(80, 200), mode='bilinear', align_corners=False)
+            time_domain_signal = F.interpolate(time_domain_signal, size=(self.frequencies_num, sampling_rate), mode='bilinear', align_corners=False)
             x = torch.cat([time_domain_signal, wt_result], dim=1)  # [BatchSize, 23, 80, 200] as input to neural network
         else:
             x = wt_result
@@ -217,3 +225,64 @@ class WaveletTransform(nn.Module):
 
     def forward(self, x):
         return cwt1d(x, self.scales, self.int_psi_scales, out_dtype=self.out_dtype, device=device)
+
+
+class WTCNN3D(nn.Module):
+    def __init__(self, scales, int_psi_scales, name='WT3DCNN', dropout=0.0):
+        super().__init__()
+
+        self.name = name
+        self.scales = scales
+        self.int_psi_scales = int_psi_scales
+        self.dropout = nn.Dropout(dropout)
+
+        self.conv1 = nn.Sequential(
+            nn.Conv3d(1, 16, (3, 3, 7), stride=(1, 2, 4), padding=(1, 1, 3)), # 1x22x100x200 -> 8x22x50x50
+            nn.BatchNorm3d(16),
+            nn.ReLU()
+        )
+
+        self.conv2 = nn.Sequential(
+            nn.Conv3d(16, 32, (3, 3, 3), stride=(1, 2, 2), padding=(1, 1, 1)), # 8x22x50x50 -> 16x22x25x25
+            nn.BatchNorm3d(32),
+            nn.ReLU()
+        )
+
+        self.conv3 = nn.Sequential(
+            nn.Conv3d(32, 64, (3, 3, 3), stride=(2, 2, 2), padding=(1, 1, 1)), # 16x22x25x25 -> 32x11x13x13
+            nn.BatchNorm3d(64),
+            nn.ReLU()
+        )
+
+        self.conv4 = nn.Sequential(
+            nn.Conv3d(64, 128, (3, 3, 3), stride=(2, 2, 2), padding=(1, 1, 1)), # 16x11x13x13 -> 32x6x7x7
+            nn.BatchNorm3d(128),
+            nn.ReLU()
+        )
+
+        self.conv5 = nn.Sequential(
+            nn.Conv3d(128, 256, (3, 3, 3), stride=(2, 2, 2), padding=(1, 1, 1)), # 16x5x6x6 -> 32x2x3x3
+            nn.BatchNorm3d(256),
+            nn.ReLU()
+        )
+
+        self.fully_connected = nn.Sequential(
+            nn.Linear(256 * 3 * 4 * 4, 6),
+            nn.Softmax(dim=-1)
+        )
+
+
+    def forward(self, x):  # [BatchSize, 22, 200] as input
+        x = change_channels_order(x)
+        wt_result = cwt1d(x, self.scales, self.int_psi_scales, out_dtype='real', device=device)
+        x = wt_result.unsqueeze(1) # [BatchSize, 0, 22, 100, 200]
+
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
+
+        x = x.view(-1, 256 * 3 * 4 * 4)
+        x = self.fully_connected(self.dropout(x))
+        return x
