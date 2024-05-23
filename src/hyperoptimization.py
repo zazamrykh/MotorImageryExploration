@@ -11,7 +11,7 @@ from src.functions import create_dataloader, generate_mt_freq, evaluate_net
 from src.network import WTCNN3D, WTConvNet
 from src.params import path_to_serialized, sampling_rate, device, channels, path_to_weights
 from src.train import train
-from src.wavelets.dwt1d import generate_int_psi_scales
+from src.wavelets.wt import generate_int_psi_scales
 
 
 def optimize():

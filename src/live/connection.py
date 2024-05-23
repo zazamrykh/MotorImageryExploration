@@ -12,7 +12,7 @@ from pylsl import StreamInlet, resolve_stream
 
 from src.functions import generate_mt_freq, visualize_mt
 from src.params import event_duration, wavelet, device, frequencies_num
-from src.wavelets.dwt1d import generate_int_psi_scales, cwt1d
+from src.wavelets.wt import generate_int_psi_scales, cwt1d
 
 
 class States(Enum):

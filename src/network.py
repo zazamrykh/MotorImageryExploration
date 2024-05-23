@@ -8,7 +8,7 @@ from src import params
 from src.functions import MorletTransform, change_channels_order
 from src.params import torch_dtype, device, out_dtype, all_sensors, frequencies_num, number_of_channels, sampling_rate, \
     wavelet
-from wavelets.dwt1d import cwt1d
+from wavelets.wt import cwt1d
 import torch.nn.functional as F
 
 

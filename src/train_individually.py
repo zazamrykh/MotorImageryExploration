@@ -14,7 +14,7 @@ from src.network import WTConvNet
 from src.params import sampling_rate, device, path_to_weights, wavelet, path_to_dataset, learning_rate, batch_size, \
     epochs, dropout_rate, weight_decay, frequencies_num, bottom, top, power, step_size, gamma
 from src.train import train, cross_validation
-from wavelets.dwt1d import generate_int_psi_scales
+from wavelets.wt import generate_int_psi_scales
 
 if __name__ == '__main__':
     subjects_list = ['A', 'B', 'C', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']

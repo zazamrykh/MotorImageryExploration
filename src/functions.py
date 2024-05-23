@@ -2,6 +2,7 @@ import colorsys
 import os
 import pickle
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pywt
@@ -15,7 +16,7 @@ from src.params import number_of_channels, channels, imagery_actions, STFT_lengt
     frequencies_num
 
 
-# matplotlib.use('TkAgg')
+matplotlib.use('TkAgg')
 
 
 def visualize_sample(sample, marker=None, channels_to_show=None, title=None):

@@ -18,7 +18,7 @@ from src.network import WTConvNet, WaveletTransform, WTCNN3D
 from src.params import path_to_serialized, device, path_to_weights, wavelet, sampling_rate, out_dtype, \
     random_seed, batch_size, epochs, dropout_rate, weight_decay, learning_rate, frequencies_num, step_size, \
     gamma, channels
-from wavelets.dwt1d import generate_int_psi_scales
+from wavelets.wt import generate_int_psi_scales
 
 
 def evaluate(model, dataloader, loss_fn):

@@ -4,12 +4,12 @@ import numpy as np
 import pywt
 import torch
 
-from src.wavelets.dwt1d import cwt1d, generate_int_psi_scales, get_representation
+from src.wavelets.wt import cwt1d, generate_int_psi_scales, get_representation, mexh, integrate_mexh, dummy_wt, wt
 from src.functions import create_dataloader, generate_mt_freq, visualize_mt
 from src.params import path_to_serialized, device, Sensors, Imagery, wavelet
 
 def main():
-    batch_size = 64
+    batch_size = 4
     data_test = np.load('../' + path_to_serialized + 'data_test_small.npy')
     markers_test = np.load('../' + path_to_serialized + 'markers_test_small.npy')
     test_loader = create_dataloader(data_test, markers_test, batch_size)
@@ -59,5 +59,37 @@ def speed_test():
 
     print('sula')
 
+
+def directly_wt():
+    batch_size = 4
+    data_test = np.load('../' + path_to_serialized + 'data_test_small.npy')
+    markers_test = np.load('../' + path_to_serialized + 'markers_test_small.npy')
+    test_loader = create_dataloader(data_test, markers_test, batch_size)
+    eeg, markers = next(iter(test_loader))
+    signal = data_test[111][6]
+    marker = markers_test[111]
+
+    frequencies = generate_mt_freq(80, 1, 80, 2)
+    sampling_rate = 200
+    scales = pywt.frequency2scale(wavelet, frequencies / sampling_rate)
+
+    start_time = time.time()
+    wt_result = np.real(wt(signal, scales/10))
+    end_time = time.time()
+    print('Time fourier', end_time - start_time)
+    visualize_mt(wt_result, frequencies)
+
+    start_time = time.time()
+    wt_dummy = dummy_wt(signal, wavelet, scales/10)
+    end_time = time.time()
+    print('Time dummy', end_time - start_time)
+    visualize_mt(wt_dummy, frequencies)
+
+    start_time = time.time()
+    wt_pywt, _ = pywt.cwt(signal, scales, wavelet, method='fft')
+    end_time = time.time()
+    print('library time', end_time - start_time)
+    visualize_mt(wt_pywt, frequencies)
+
 if __name__ == '__main__':
-    speed_test()
+    directly_wt()

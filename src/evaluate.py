@@ -10,7 +10,7 @@ from src.functions import generate_mt_freq, create_dataloader
 from src.network import WTConvNet
 from src.params import wavelet, sampling_rate, device, path_to_serialized, imagery_actions, frequencies_num, Sensors, \
     dropout_rate
-from src.wavelets.dwt1d import generate_int_psi_scales
+from src.wavelets.wt import generate_int_psi_scales
 from PIL import ImageTk
 
 if __name__ == '__main__':
