@@ -1,11 +1,9 @@
-import colorsys
+from math import floor, ceil
 
 import numpy as np
 import torch
-from math import floor, ceil
-from pywt import DiscreteContinuousWavelet, integrate_wavelet, scale2frequency
+from pywt import DiscreteContinuousWavelet, integrate_wavelet
 from pywt._cwt import next_fast_len
-from pywt._extensions._pywt import _check_dtype, ContinuousWavelet, Wavelet
 
 fftmodule = torch.fft
 
@@ -64,20 +62,6 @@ def cwt1d(data, scales, int_psi_scales, axis=-1, out_dtype='real', device='cpu')
 
 
 def generate_int_psi_scales(scales, wavelet, device):
-    # wavelet = DiscreteContinuousWavelet(wavelet)
-    # precision = 12
-    # int_psi, x = integrate_wavelet(wavelet, precision=precision)
-    # int_psi_scales = []
-    # for i, scale in enumerate(scales):
-    #     step = x[1] - x[0]
-    #     j = np.arange(scale * (x[-1] - x[0]) + 1) / (scale * step)
-    #     j = j.astype(int)  # floor
-    #     if j[-1] >= int_psi.size:
-    #         j = np.extract(j < int_psi.size, j)
-    #     int_psi_scale = int_psi[j][::-1]
-    #     int_psi_scales.append(torch.tensor(int_psi_scale.copy()).to(device))
-    # return int_psi_scales
-
     wavelet = DiscreteContinuousWavelet(wavelet)
     precision = 12
     int_psi, x = integrate_wavelet(wavelet, precision=precision)
@@ -147,37 +131,6 @@ def hls_to_rgb_pytorch(h, l, s):
     return torch.stack([r, g, b], dim=-1)
 
 
-# def get_representation(data):
-#     if data.dtype != torch.complex64:
-#         print('Data is not complex!')
-#         return
-#
-#     input_shape = data.shape # shape needs to be (n_batch, 22, 80, 200)
-#     data = data.view(-1, input_shape[2], input_shape[3])
-#     amp = torch.abs(data)
-#     phase = torch.angle(data)
-#     H = phase / (2 * torch.pi)
-#     L = 1 - 2 ** (-amp)
-#     S = torch.ones_like(amp)
-#
-#     repr = torch.stack([H, L, S]) # now (3, -1, 80, 200)
-#     repr = repr.permute(1, 0, 2, 3) # do (-1, 3, 80, 200)
-#     repr_np = repr.numpy()
-#
-#     repr_np_rgb = np.zeros_like(repr_np)
-#     for n in range(repr_np.shape[0]):
-#         for y in range(repr_np.shape[2]):
-#             for x in range(repr_np.shape[3]):
-#                 h = repr_np[n, 0, y, x]
-#                 l = repr_np[n, 1, y, x]
-#                 s = repr_np[n, 2, y, x]
-#                 r, g, b = colorsys.hls_to_rgb(h, l, s)
-#                 repr_np_rgb[n, 0, y, x] = r
-#                 repr_np_rgb[n, 1, y, x] = g
-#                 repr_np_rgb[n, 2, y, x] = b
-#
-#     return torch.tensor(repr_np_rgb)
-
 coefficient_mexh = 2 / (np.sqrt(3) * np.power(np.pi, 0.25))
 
 
@@ -187,10 +140,10 @@ def mexh(t):
     return coefficient_mexh * exponent * polynomial
 
 
-def integrate_mexh(section_num, scales, precision=12, diapason=(-8, 8)):
+def integrate(section_num, scales, precision=12, diapason=(-8, 8), func=mexh):
     points_num = 2 ** precision
     diapason_len = diapason[1] - diapason[0]
-    step = (diapason_len) / points_num
+    step = diapason_len / points_num
 
     result = []
     for scale in scales:
@@ -198,24 +151,25 @@ def integrate_mexh(section_num, scales, precision=12, diapason=(-8, 8)):
         for i in range(points_num):
             spent = i / points_num
             t = diapason[0] + spent * diapason_len
-            integrals[int(spent * section_num)] += mexh(t / scale) * step
+            integrals[int(spent * section_num)] += func(t / scale) * step
         result.append(integrals)
     return np.stack(result)
 
 
 # numpy realisation directly
-def dummy_wt(signal, wavelet, scales, broad='zeros'):
+def wt_str84wd(signal, scales, extend='zeros', wavelet='mexh'):
     signal_len = signal.shape[-1]
-    integrals = integrate_mexh(signal.shape[-1] - 1, scales)
-    broaded_signal = np.zeros(signal_len * 2)
+    func = mexh
+    integrals = integrate(signal.shape[-1] - 1, scales, func=func)
+    extended_signal = np.zeros(signal_len * 2)
     for i in range(signal_len * 2):
-        if broad == 'zeros':
+        if extend == 'zeros':
             if i < signal_len / 2 or i >= 3 / 2 * signal_len:
-                broaded_signal[i] = 0
+                extended_signal[i] = 0
             else:
-                broaded_signal[i] = signal[i - int(signal_len / 2)]
+                extended_signal[i] = signal[i - int(signal_len / 2)]
         else:
-            broaded_signal[i] = signal[(i - int(signal_len / 2)) % signal_len]
+            extended_signal[i] = signal[(i - int(signal_len / 2)) % signal_len]
 
     result = np.zeros((len(scales), signal_len))
 
@@ -223,7 +177,7 @@ def dummy_wt(signal, wavelet, scales, broad='zeros'):
         for b in range(signal_len):
             current_corr = 0
             for i in range(signal_len - 1):
-                current_corr += (broaded_signal[b + i] + broaded_signal[b + i + 1]) / 2 * integrals[scale_num][i]
+                current_corr += (extended_signal[b + i] + extended_signal[b + i + 1]) / 2 * integrals[scale_num][i]
 
             result[scale_num][b] = current_corr
 
@@ -231,7 +185,7 @@ def dummy_wt(signal, wavelet, scales, broad='zeros'):
 
 
 def wt(signal, scales):
-    integrals = integrate_mexh(signal.shape[-1], scales)
+    integrals = integrate(signal.shape[-1], scales)
 
     result = []
 
@@ -240,7 +194,7 @@ def wt(signal, scales):
         fft_signal = np.fft.fft(signal)
 
         corr = np.fft.ifft(fft_wav.conj() * fft_signal)
-        corr = np.roll(corr, -corr.shape[-1] // 2, axis=-1)
+        corr = np.roll(corr, -corr.shape[-1] // 2, axis=-1)  # spectrogram shift
         result.append(corr)
 
     return np.stack(result)

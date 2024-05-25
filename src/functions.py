@@ -320,3 +320,29 @@ def change_channels_order(signal, new_order=spatial_channels_order):
     indices = [channels.index(channel) for channel in new_order]
     return signal[:, indices, :]
 
+
+def calculate_corr(first, second, eps=1e-10):
+    assert first.shape == second.shape
+
+    first = first.astype(np.float64)
+    second = second.astype(np.float64)
+    if len(first.shape) == 3:
+        first_means = np.full((first.shape[0], first.shape[1], 3), np.mean(first, axis=(0, 1)), dtype=np.float64)
+        second_means = np.full((second.shape[0], second.shape[1], 3), np.mean(second, axis=(0, 1)), dtype=np.float64)
+        first_stds = np.full((first.shape[0], first.shape[1], 3), np.std(first, axis=(0, 1)), dtype=np.float64)
+        second_stds = np.full((second.shape[0], second.shape[1], 3), np.std(second, axis=(0, 1)), dtype=np.float64)
+    if len(first.shape) == 2:
+        first_means = np.full((first.shape[0], first.shape[1]), np.mean(first, axis=(0, 1)), dtype=np.float64)
+        second_means = np.full((second.shape[0], second.shape[1]), np.mean(second, axis=(0, 1)), dtype=np.float64)
+        first_stds = np.full((first.shape[0], first.shape[1]), np.std(first, axis=(0, 1)), dtype=np.float64)
+        second_stds = np.full((second.shape[0], second.shape[1]), np.std(second, axis=(0, 1)), dtype=np.float64)
+    elif len(first.shape) == 1:
+        first_means = first.mean()
+        second_means = second.mean()
+        first_stds = first.std()
+        second_stds = second.std()
+    else:
+        print('Wrong signal shape')
+        return None
+    corr = np.mean((first - first_means) * (second - second_means) / (first_stds * second_stds + eps))
+    return corr
